@@ -18,7 +18,7 @@ acled_data <- rename(acled_data, year = YEAR)
 # Load Ethnic Power Relations data, source: http://www.epr.ucla.edu/
 EPR_data <- foreign::read.dta("/Users/lesliehuang/Dropbox/Fall 2016/Political Violence/Communal violence paper/communal-violence-data-analysis/EPR3CountryNewReduced.dta")
 # keep just the columns we want and rename some vars
-EPR_data <- select(EPR_data, year:gdpcapl, popavg, polity2, polity, democ, groups, egipgrps:maxpop)
+EPR_data <- select(EPR_data, year:gdpcap, popavg, polity2, polity, democ, groups, egipgrps:maxpop)
 EPR_data <- rename(EPR_data, 
                    num_ethnopoli_relevant_groups = groups, 
                    num_incl_EPR_groups = egipgrps, 
@@ -38,6 +38,9 @@ EPR_data <- rename(EPR_data,
                    size_largest_incl_grp_pop_percent = maxegippop, 
                    size_largest_group_pop_percent = maxpop)
 
+EPR_data$ln_gdpcap <- log(EPR_data$gdpcap)
+EPR_data$ln_pop <- log(EPR_data$popavg)
+
 EPR_data$country[EPR_data$country == "Cote d'Ivoire"] <- "Ivory Coast"
 EPR_data$country[EPR_data$country == "Democratic Republic of the Congo"] <- "Democratic Republic of Congo"
 
@@ -51,7 +54,6 @@ while (i <= 2015) {
   i <- i + 1
 }
 
-
 # Load polarization data, source: http://www.econ.upf.edu/%7Emontalvo/marta/marta.htm
 polar_data <- read.csv("/Users/lesliehuang/Dropbox/Fall 2016/Political Violence/Communal violence paper/communal-violence-data-analysis/polarization.csv", stringsAsFactors = FALSE)
 # rename some countries for merging
@@ -61,24 +63,43 @@ polar_data$country[polar_data$country == "Cote d'Ivoire"] <- "Ivory Coast"
 polar_data$country[polar_data$country == "Egypt, Arab Rep."] <- "Egypt"
 polar_data$country[polar_data$country == "Gambia, The"] <- "Gambia"
 
-
 # Load fractionalization data, source: http://www.anderson.ucla.edu/faculty_pages/romain.wacziarg/papersum.html
 frac_data <- read.csv("/Users/lesliehuang/Dropbox/Fall 2016/Political Violence/Communal violence paper/communal-violence-data-analysis/Alesina fractionalization.csv", stringsAsFactors = FALSE)
 frac_data <- subset(frac_data, select = c("Country", "Ethnic", "Language", "Religion"))
 frac_data <- rename(frac_data, country = Country)
 
-# Merged data
+# filtered for militias
+any_militia <- filter(acled_data, INTER1 == 4 | INTER2 == 4)
 
-# ACLED x polarization: missing some countries
-merged_polar <- left_join(acled_data, polar_data, by = "country")
+# set up empty country-year DF (need to include years when no incidents happened)
+countries <- unique(acled_data$country)
+years <- unique(acled_data$year)
+
+country_year_data <- data.frame(country = sort(rep(countries, length(years))), year = rep(years, length(countries)))
+
+# add an indicator and do some grouping to get incidents per country-year
+any_militia$indicator <- 1
+militia_yearlycount <- group_by(any_militia, country, year)
+country_year_counts <- summarize(militia_yearlycount, num_incidents = sum(indicator), avg_fatalities = mean(FATALITIES))
+country_year_data <- left_join(country_year_data, country_year_counts)
+
+# replace the NAs with zeros
+country_year_data[c("num_incidents")][is.na(country_year_data[c("num_incidents")])] <- 0
+
+country_year_data$ln_avg_fatalities <- log(country_year_data$avg_fatalities + 1) # log of avg_fatalities + 1 for smoothing
+country_year_data$ln_num_incidents <- log(country_year_data$num_incidents + 1) # log of num_incidents + 1 for smoothing
+
+
+### Merge in X vars and controls
+
+# polarization: missing some countries
+country_year_data <- left_join(country_year_data, polar_data, by = "country")
 
 # add in frac indices
-merged <- left_join(merged_polar, frac_data, by = "country")
+country_year_data <- left_join(country_year_data, frac_data, by = "country")
 
 # add in EPR
-merged <- left_join(merged, EPR_data, by = c("country", "year"))
+country_year_data <- left_join(country_year_data, EPR_data, by = c("country", "year"))
 
-# filtered for militias
-any_militia <- filter(merged, INTER1 == 4 | INTER2 == 4)
-
-intermilitia <- filter(merged, INTERACTION == 44)
+# save it for Stata
+write.csv(country_year_data, file = "country_year_data.csv")
