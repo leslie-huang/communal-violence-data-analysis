@@ -54,6 +54,11 @@ while (i <= 2015) {
   i <- i + 1
 }
 
+# create dummy for ethnic group with more than 60% share
+EPR_data <- mutate(EPR_data, ethdom_dummy60  = ifelse(size_largest_group_pop_percent > .6, 1, 0))
+EPR_data <- mutate(EPR_data, ethdom_dummy50  = ifelse(size_largest_group_pop_percent > .5, 1, 0))
+EPR_data <- mutate(EPR_data, ethdom_dummy70  = ifelse(size_largest_group_pop_percent > .7, 1, 0))
+
 # Load polarization data, source: http://www.econ.upf.edu/%7Emontalvo/marta/marta.htm
 polar_data <- read.csv("/Users/lesliehuang/Dropbox/Fall 2016/Political Violence/Communal violence paper/communal-violence-data-analysis/polarization.csv", stringsAsFactors = FALSE)
 # rename some countries for merging
@@ -67,6 +72,14 @@ polar_data$country[polar_data$country == "Gambia, The"] <- "Gambia"
 frac_data <- read.csv("/Users/lesliehuang/Dropbox/Fall 2016/Political Violence/Communal violence paper/communal-violence-data-analysis/Alesina fractionalization.csv", stringsAsFactors = FALSE)
 frac_data <- subset(frac_data, select = c("Country", "Ethnic", "Language", "Religion"))
 frac_data <- rename(frac_data, country = Country)
+
+# recode the NAs
+frac_data[frac_data == "."] <- NA
+
+# get rid of the empty rows
+frac_data <- frac_data[1:215, ]
+
+frac_data[, 2:4] <- as.data.frame(sapply(frac_data[2:4], as.numeric))
 
 # filtered for militias
 any_militia <- filter(acled_data, INTER1 == 4 | INTER2 == 4)
@@ -102,4 +115,4 @@ country_year_data <- left_join(country_year_data, frac_data, by = "country")
 country_year_data <- left_join(country_year_data, EPR_data, by = c("country", "year"))
 
 # save it for Stata
-write.csv(country_year_data, file = "country_year_data.csv")
+write.dta(country_year_data, file = "data.dta")
